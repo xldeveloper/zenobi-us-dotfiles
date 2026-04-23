@@ -87,6 +87,9 @@ Holding onto useless or misnamed files creates confusion and degrades the memory
 - [core] when initialising, create a codemap of exiting codebase, ensure there is a state machine ascii diagram representing your understanding of the codebase in `.memory/knowledge-codemap.md`.
 - [core] every project MUST start with idea capture or epic definition before stories or tasks are created
 - [core] Always keep `.memory/summary.md` and `.memory/roadmap.md` up to date with current execution and future direction. Prune incorrect or outdated information.
+- [core] All references to planning artifacts MUST be markdown links. NEVER use plain text filenames for artifact references.
+- [core] Planning artifacts include: `epic`, `story`, `task`, `research`, and `learning` files.
+- [core] Required reference format: `[label](./<type>-<8_char_hashid>-<title>.md)`.
 - [git] Always commit changes after completing a task or phase. 
 - [git] NEVER PUSH CHANGES WITHOUT HUMAN REVIEW.
 - [git] when committing changes, follow conventional commit guidelines.
@@ -215,6 +218,7 @@ Sections:
 - `## Expected Outcome`: A description of the expected result upon task completion.
 - `## Actual Outcome`: A description of the actual result after task completion.
 - `## Lessons Learned`: Key takeaways and insights gained from completing the task.
+- [core] Any artifact reference in task sections (e.g., Related Story/Phase, Steps, Notes, Lessons Learned) MUST use markdown links.
 
 ### Template: Epic
 
@@ -230,6 +234,7 @@ Sections:
 - `## Stories`: A list of stories defining requirements for this epic (links to story files). Stories are phase-agnostic - they define WHAT needs to be built, not WHEN.
 - `## Phases`: Inline phase sections (see format below). Phases define WHEN work happens and contain scheduled tasks.
 - `## Dependencies`: Any dependencies that may impact the epic.
+- [core] Any artifact reference in epic sections (e.g., Stories, Phases, Dependencies, Notes) MUST use markdown links.
 
 #### Phase Section Format (Inline in Epic)
 
@@ -291,6 +296,7 @@ Sections:
   - `### E2E Tests`: A table mapping each acceptance criterion to its e2e test case. One story = one e2e test suite/file. Each acceptance criterion = one test case within that suite. Format: `| AC# | Criterion | Test file/case | Status |`
   - `### Unit Test Coverage (via Tasks)`: A list of tasks spawned by this story, with a summary of what each task's unit tests verify and how that contributes to satisfying the story's acceptance criteria. Format: `- Task [hash]: [unit test summary] → satisfies AC#N`
 - `## Notes`: Additional notes, edge cases, or considerations.
+- [core] Any artifact reference in story sections (e.g., Tasks, Test Specification, Notes) MUST use markdown links.
 
 > [!NOTE]
 > Stories are the bridge between business requirements and technical tasks.
@@ -320,6 +326,7 @@ Sections:
 - `## Summary`: A brief overview of the research findings.
 - `## Findings`: Detailed findings from the research.
 - `## References`: A list of sources and references used during the research.
+- [core] Any artifact reference in research sections (e.g., Findings, References, Notes) MUST use markdown links.
 
 ### Template: Learning
 
@@ -334,6 +341,7 @@ Sections:
 - `## Summary`: A brief overview of the learning.
 - `## Details`: Detailed description of the learning.
 - `## Implications`: How this learning can be applied in future projects.
+- [core] Any artifact reference in learning sections (e.g., Summary, Details, Implications) MUST use markdown links.
 
 ### Template: Constitution
 
@@ -430,6 +438,10 @@ Sometimes the `.memory/` directory needs maintenance. Use these actions as neede
 #### Action: Validate Memory [VALIDATE-MEMORY]
 
 - [core] run schema validation via helper: `./scripts/miniproject.sh validate-memory` (or `./scripts/miniproject.sh validate-memory --repair` to auto-fix).
+- [core] run `./scripts/miniproject.sh validate-memory` before marking work complete.
+- [core] if validation reports link-format violations, run `./scripts/miniproject.sh validate-memory --repair`, then re-run validation.
+- [core] do NOT mark work complete until `validate-memory` passes with no errors.
+- [core] repository automation SHOULD run `./scripts/miniproject.sh validate-memory` in pre-commit and CI checks.
 
 
 #### Action: Refine Constitution [REFINE-CONSTITUTION]

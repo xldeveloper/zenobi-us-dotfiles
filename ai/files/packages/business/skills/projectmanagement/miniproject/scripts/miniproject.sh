@@ -128,6 +128,7 @@ Environment defaults (optional):
   - MP_OWNER_ID or OWNER_ID (for --owner)
   - MP_AUTO_PROJECT=1|0 (default: 1; auto-refresh after mutating commands)
   - MP_AUTO_PROJECT_QUERY=1|0 (default: 0; optional refresh before query commands)
+  - MP_ENFORCE_SCHEMA_ON_PROJECT=1|0 (default: 0; validate-memory gate before project auto-commit)
 
 Notes:
   - Source of truth is task frontmatter in .memory/task-*.md.
@@ -496,6 +497,52 @@ lib_file_write_atomic() {
 	tmp="$(mktemp)"
 	cat >"$tmp"
 	mv "$tmp" "$target"
+}
+
+# Name: lib_ref_file_by_id
+# What: Resolves an artifact filename by type+id from .memory or archive.
+# Why: Keep behavior explicit and maintainable for humans/LLMs editing this script.
+lib_ref_file_by_id() {
+	local artifact_type artifact_id mem candidate
+	artifact_type="$1"
+	artifact_id="$2"
+	if [[ -z "$artifact_type" || -z "$artifact_id" ]]; then
+		printf '%s\n' ""
+		return 0
+	fi
+
+	mem="$(lib_memory_dir --no-create 2>/dev/null || lib_memory_dir)"
+	for candidate in "$mem/${artifact_type}-${artifact_id}-"*.md "$mem/archive/${artifact_type}-${artifact_id}-"*.md; do
+		if [[ -f "$candidate" ]]; then
+			basename "$candidate"
+			return 0
+		fi
+	done
+	printf '%s\n' ""
+}
+
+# Name: lib_ref_md_link
+# What: Normalizes artifact references to markdown links.
+# Why: Keep behavior explicit and maintainable for humans/LLMs editing this script.
+lib_ref_md_link() {
+	local ref label file
+	ref="$1"
+	label="${2:-}"
+
+	if [[ -z "$ref" ]]; then
+		printf '%s\n' ""
+		return 0
+	fi
+
+	file="$(basename "$ref")"
+	if [[ "$file" != *.md ]]; then
+		printf '%s\n' "$ref"
+		return 0
+	fi
+	if [[ -z "$label" ]]; then
+		label="${file%.md}"
+	fi
+	printf '[%s](./%s)\n' "$label" "$file"
 }
 
 # Name: lib_views_refresh_derived
@@ -1733,26 +1780,39 @@ cmd_project() {
 		shopt -s nullglob
 		for tf in "$mem"/task-*.md; do
 			if lib_claim_is_active_file "$tf"; then
-				local owner workspace story
+				local owner workspace story story_file task_file
 				owner="$(lib_frontmatter_get "$tf" "claimed_by_owner_id")"
 				workspace="$(lib_frontmatter_get "$tf" "claimed_by_workspace_id")"
 				story="$(lib_frontmatter_get "$tf" "story_id")"
-				echo "$owner|${workspace:-none}|$(basename "$tf")|${story:-none}" >>"$owners_tmp"
+				task_file="$(basename "$tf")"
+				story_file=""
+				if [[ -n "$story" ]]; then
+					story_file="$(lib_ref_file_by_id "story" "$story")"
+				fi
+				echo "$owner|${workspace:-none}|$task_file|${story_file:-none}" >>"$owners_tmp"
 			fi
 		done
 		shopt -u nullglob
 
 		if [[ -s "$owners_tmp" ]]; then
-			sort "$owners_tmp" | awk -F'|' '
-        BEGIN { cur=""; curw="" }
-        {
-          if ($1 != cur || $2 != curw) {
-            cur=$1; curw=$2;
-            print "- **Owner:** " cur "  | workspace: " curw
-          }
-          print "  - task: `" $3 "` (story: `" $4 "`)"
-        }
-      '
+			local cur_owner cur_workspace
+			cur_owner=""
+			cur_workspace=""
+			sort "$owners_tmp" | while IFS='|' read -r owner workspace task_file story_file; do
+				if [[ "$owner" != "${cur_owner:-}" || "$workspace" != "${cur_workspace:-}" ]]; then
+					cur_owner="$owner"
+					cur_workspace="$workspace"
+					echo "- **Owner:** $cur_owner  | workspace: $cur_workspace"
+				fi
+				local task_link story_link
+				task_link="$(lib_ref_md_link "$task_file")"
+				if [[ -n "$story_file" && "$story_file" != "none" ]]; then
+					story_link="$(lib_ref_md_link "$story_file")"
+				else
+					story_link="none"
+				fi
+				echo "  - task: $task_link (story: $story_link)"
+			done
 		else
 			echo "- No active owners."
 		fi
@@ -1766,7 +1826,7 @@ cmd_project() {
 		for tf in "$mem"/task-*.md; do
 			if lib_claim_is_stale_file "$tf"; then
 				stale_any=1
-				echo "- $(basename "$tf") (owner=$(lib_frontmatter_get "$tf" "claimed_by_owner_id"), lease_expires_at=$(lib_frontmatter_get "$tf" "lease_expires_at"))"
+				echo "- $(lib_ref_md_link "$(basename "$tf")") (owner=$(lib_frontmatter_get "$tf" "claimed_by_owner_id"), lease_expires_at=$(lib_frontmatter_get "$tf" "lease_expires_at"))"
 			fi
 		done
 		shopt -u nullglob
@@ -1799,7 +1859,7 @@ cmd_project() {
 			fi
 
 			unclaimed=1
-			echo "- [ ] [$(basename "$tf")](./$(basename "$tf")) \`${status:-unknown}\` ${blocked_by:+[BLOCKED by $blocked_by]} ${title:+- $title}"
+				echo "- [ ] $(lib_ref_md_link "$(basename "$tf")") \`${status:-unknown}\` ${blocked_by:+[BLOCKED by $blocked_by]} ${title:+- $title}"
 		done
 		shopt -u nullglob
 		if [[ "$unclaimed" -eq 0 ]]; then
@@ -1814,7 +1874,7 @@ cmd_project() {
 		for tf in "$mem"/task-*.md; do
 			if lib_claim_is_active_file "$tf"; then
 				claimed_any=1
-				echo "- $(basename "$tf") (owner=$(lib_frontmatter_get "$tf" "claimed_by_owner_id"), workspace=$(lib_frontmatter_get "$tf" "claimed_by_workspace_id"), lease=$(lib_frontmatter_get "$tf" "lease_expires_at"))"
+				echo "- $(lib_ref_md_link "$(basename "$tf")") (owner=$(lib_frontmatter_get "$tf" "claimed_by_owner_id"), workspace=$(lib_frontmatter_get "$tf" "claimed_by_workspace_id"), lease=$(lib_frontmatter_get "$tf" "lease_expires_at"))"
 			fi
 		done
 		shopt -u nullglob
@@ -1886,7 +1946,7 @@ cmd_project() {
 				continue
 			fi
 			focus_any=1
-			echo "- $(basename "$tf") (status=${ts:-unknown})"
+			echo "- $(lib_ref_md_link "$(basename "$tf")") (status=${ts:-unknown})"
 		done
 		shopt -u nullglob
 		if [[ "$focus_any" -eq 0 ]]; then
@@ -1912,7 +1972,7 @@ cmd_project() {
 			completed | archived | rejected | promoted) continue ;;
 			esac
 			idea_any=1
-			echo "- [$(basename "$idf")]($(basename "$idf")) status=\`${is:-captured}\`${ih:+ horizon=\`$ih\`} ${title:+- $title}"
+			echo "- $(lib_ref_md_link "$(basename "$idf")") status=\`${is:-captured}\`${ih:+ horizon=\`$ih\`} ${title:+- $title}"
 		done
 		shopt -u nullglob
 		if [[ "$idea_any" -eq 0 ]]; then
@@ -1931,7 +1991,7 @@ cmd_project() {
 				continue
 			fi
 			epic_any=1
-			echo "- [$(basename "$ef")]($(basename "$ef")) status=\`${es:-unknown}\` ${et:+- $et}"
+			echo "- $(lib_ref_md_link "$(basename "$ef")") status=\`${es:-unknown}\` ${et:+- $et}"
 		done
 		shopt -u nullglob
 		if [[ "$epic_any" -eq 0 ]]; then
@@ -1959,6 +2019,12 @@ cmd_project() {
 		lib_file_write_atomic "$mem/todo.md" <"$todo_tmp"
 		lib_file_write_atomic "$mem/summary.md" <"$summary_tmp"
 		lib_file_write_atomic "$mem/roadmap.md" <"$roadmap_tmp"
+		if [[ "${MP_ENFORCE_SCHEMA_ON_PROJECT:-0}" == "1" ]]; then
+			if ! cmd_validate_memory --no-archive >/dev/null; then
+				echo "ERROR: validate-memory failed during project generation (MP_ENFORCE_SCHEMA_ON_PROJECT=1)" >&2
+				exit 1
+			fi
+		fi
 		if [[ "${MP_PROJECT_NO_COMMIT:-0}" != "1" ]]; then
 			lib_git_commit_memory_changes "refresh derived project views" \
 				"$mem/team.md" "$mem/todo.md" "$mem/summary.md" "$mem/roadmap.md"
