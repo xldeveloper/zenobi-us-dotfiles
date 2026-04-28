@@ -4,7 +4,6 @@ Use the writing-git-commits skill to commit unstaged and staged changes and carr
 
 ```md
 UserRequest: $ARGUMENTS
-AdditionalInstructions: $ARGUMENTS
 ```
 
 - Unstage files before analysis
