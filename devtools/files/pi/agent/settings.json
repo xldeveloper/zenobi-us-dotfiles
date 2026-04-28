@@ -6,30 +6,24 @@
     "npm:@zenobius/pi-rose-pine",
     "npm:@marckrenn/pi-sub-bar",
     "npm:@marckrenn/pi-sub-core",
-    "npm:@zenobius/pi-worktrees@0.4.0-next.19",
-    "npm:pi-subdir-context",
     "npm:pi-mermaid",
     "npm:pi-subagents",
     "npm:pi-hashline-readmap",
-    "npm:pi-token-burden",
+    "npm:pi-prompt-template-model",
+    "npm:@ogulcancelik/pi-sketch",
     "./packages/agent-core",
     "./packages/developer",
     "./packages/creator",
     "./packages/researcher",
     "./packages/business",
-    "./packages/platform",
-    "npm:@sherif-fanous/pi-rtk",
-    "npm:pi-prompt-template-model"
-  ],
-  "extensions": [
-    "/home/zenobius/.pi/extensions/s3-share.ts"
+    "./packages/platform"
   ],
   "shellCommandPrefix": "eval \"$(mise env -s bash)\"\nshopt -s expand_aliases\neval \"$(grep '^alias ' ~/.zshrc)\"",
-  "hideThinkingBlock": true,
+  "hideThinkingBlock": false,
   "defaultProvider": "openai-codex",
-  "defaultModel": "gpt-5.3-codex",
   "enableSkillCommands": false,
   "quietStartup": true,
   "collapseChangelog": true,
-  "autocompleteMaxVisible": 10
+  "autocompleteMaxVisible": 10,
+  "defaultModel": "gpt-5.3-codex"
 }
