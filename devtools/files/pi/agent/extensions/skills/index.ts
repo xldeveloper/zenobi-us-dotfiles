@@ -28,7 +28,7 @@ import {
   type RuntimeSettingsService,
 } from "./service/config.js";
 import { injectSkillsIntoSystemPrompt } from "./service/systemprompt.js";
-import { createSkillRegistry } from "./service/skill-registry.js";
+import { createSkillRegistry, resolveSkillRoots } from "./service/skill-registry.js";
 import { CreateSkillSlashCommands, LoadSkillCommand } from "./cmds/skill.js";
 import { renderFoldedToolText } from "./core/tool-render.js";
 import { buildSkillUserMessage, ReadSkillCommand } from "./cmds/read.js";
@@ -41,7 +41,7 @@ export {
 
 export default function qualifiedSkillsExtension(pi: ExtensionAPI) {
   const registry = createSkillRegistry();
-  const piSettings = SettingsManager.create();
+  // defer SettingsManager access until session_start to avoid load-time failures
 
   // Load skills on session start
   pi.on("session_start", async (_event, ctx) => {
@@ -77,11 +77,17 @@ export default function qualifiedSkillsExtension(pi: ExtensionAPI) {
       ctx.ui.notify(`Found ${registry.skills.length} skill(s)`, "info");
     }
 
-    if (piSettings.getEnableSkillCommands()) {
+    let enableSkillCommands = true;
+    try {
+      enableSkillCommands = SettingsManager.create().getEnableSkillCommands();
+    } catch {
+      enableSkillCommands = true;
+    }
+
+    if (enableSkillCommands) {
       CreateSkillSlashCommands(pi, registry.skills, function (name, args) {
         const result = ReadSkillCommand(name, registry.skillMap);
         if (!result.ok) return;
-
         const message = buildSkillUserMessage(
           result.value.skill,
           result.value.body,
@@ -125,6 +131,48 @@ export default function qualifiedSkillsExtension(pi: ExtensionAPI) {
       },
     });
 
+    pi.registerCommand("skills:registry:stats", {
+      description: "Print skill registry stats",
+      handler: async (_args, cmdCtx: ExtensionContext) => {
+        const skills = registry.skills;
+        const diagnostics = registry.diagnostics;
+        const roots = resolveSkillRoots({ cwd: cmdCtx.cwd, includeDefaults: true });
+
+        const disabledCount = skills.filter((s) => s.disableModelInvocation).length;
+        const qualifiedNames = new Set(skills.map((s) => s.qualifiedName));
+        const shortnameCounts = new Map<string, number>();
+        for (const skill of skills) {
+          shortnameCounts.set(skill.name, (shortnameCounts.get(skill.name) ?? 0) + 1);
+        }
+        const ambiguousShortnames = Array.from(shortnameCounts.entries())
+          .filter(([, count]) => count > 1)
+          .map(([name]) => name)
+          .sort();
+
+        const warningCount = diagnostics.filter((d) => d.type === "warning").length;
+        const collisionCount = diagnostics.filter((d) => d.type === "collision").length;
+
+        const stats = {
+          totals: {
+            skills: skills.length,
+            uniqueQualifiedNames: qualifiedNames.size,
+            disabledModelInvocation: disabledCount,
+            ambiguousShortnames: ambiguousShortnames.length,
+          },
+          diagnostics: {
+            warnings: warningCount,
+            collisions: collisionCount,
+          },
+          roots,
+          examples: {
+            ambiguousShortnames: ambiguousShortnames.slice(0, 20),
+          },
+        };
+
+        cmdCtx.ui.notify(`Skill registry stats:\n${JSON.stringify(stats, null, 2)}`, "info");
+      },
+    });
+
     const findSKillsParamsSchema = Type.Object({
         query: Type.Union([
           Type.String({
@@ -153,12 +201,12 @@ export default function qualifiedSkillsExtension(pi: ExtensionAPI) {
       label: "Find Skills",
       description: "Search for available skills by natural language query.",
       parameters: findSKillsParamsSchema,
-      async execute(_toolCallId, params) {
+      async execute(_toolCallId, params, _signal, _onUpdate, toolCtx) {
         const query = Array.isArray(params.query) ? params.query : [params.query];
-        
+
         try {
-          ctx.ui.notify(`find_skills: ${runtimeSettings.searchStrategy} search for "${query.join(", ")}"`, "info");
-          
+          toolCtx.ui.notify(`find_skills: ${runtimeSettings.searchStrategy} search for "${query.join(", ")}"`, "info");
+
           const output = FindSkillsCmd(
             registry.skills,
             query,
@@ -306,12 +354,13 @@ export default function qualifiedSkillsExtension(pi: ExtensionAPI) {
 
   let systemPromptInjected = false;
     // Inject skills into system prompt, replacing any existing <available_skills> block
-    pi.on("before_agent_start", async (event) => {
-      if (systemPromptInjected) { return }
-
+    pi.on("before_agent_start", async (event, eventCtx) => {
+      if (systemPromptInjected) {
+        return;
+      }
 
       if (!registry.systemPromptBlock) {
-        ctx.ui.notify(
+        eventCtx.ui.notify(
           "No system prompt block defined for skills; skipping injection",
           "warning",
         );
@@ -319,9 +368,13 @@ export default function qualifiedSkillsExtension(pi: ExtensionAPI) {
       }
 
       if (!runtimeSettings.lazySkills) {
-        ctx.ui.notify(`Injecting ${registry.skills.length} skill(s) into system prompt`, "info");
+        eventCtx.ui.notify(
+          `Injecting ${registry.skills.length} skill(s) into system prompt`,
+          "info",
+        );
       }
 
+      systemPromptInjected = true;
       return {
         systemPrompt: injectSkillsIntoSystemPrompt(
           event.systemPrompt,

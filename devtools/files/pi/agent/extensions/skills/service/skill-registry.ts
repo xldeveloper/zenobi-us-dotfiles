@@ -60,6 +60,24 @@ const CONFIG_DIR_NAME = ".pi";
 const MAX_NAME_LENGTH = 64;
 const MAX_DESCRIPTION_LENGTH = 1024;
 
+function getSafeHomeDir(): string {
+  try {
+    const home = homedir();
+    if (typeof home === "string" && home.trim().length > 0) {
+      return home;
+    }
+  } catch {
+    // fallback below
+  }
+
+  const envHome = process.env.HOME;
+  if (typeof envHome === "string" && envHome.trim().length > 0) {
+    return envHome;
+  }
+
+  return process.cwd();
+}
+
 function parseFrontmatter(content: string): {
   frontmatter: SkillFrontmatter;
   body: string;
@@ -138,9 +156,9 @@ function validateDescription(description: string | undefined): string[] {
 
 function normalizePath(input: string): string {
   const trimmed = input.trim();
-  if (trimmed === "~") return homedir();
-  if (trimmed.startsWith("~/")) return join(homedir(), trimmed.slice(2));
-  if (trimmed.startsWith("~")) return join(homedir(), trimmed.slice(1));
+  if (trimmed === "~") return getSafeHomeDir();
+  if (trimmed.startsWith("~/")) return join(getSafeHomeDir(), trimmed.slice(2));
+  if (trimmed.startsWith("~")) return join(getSafeHomeDir(), trimmed.slice(1));
   return trimmed;
 }
 
@@ -284,7 +302,7 @@ function resolveNpmPackage(source: string, baseDir: string): string[] {
   );
   candidateRoots.add(join(nodeGlobalRoot, packageName));
   candidateRoots.add(
-    join(homedir(), CONFIG_DIR_NAME, "agent", "npm", "node_modules", packageName),
+    join(getSafeHomeDir(), CONFIG_DIR_NAME, "agent", "npm", "node_modules", packageName),
   );
   candidateRoots.add(
     join(process.cwd(), CONFIG_DIR_NAME, "npm", "node_modules", packageName),
@@ -472,7 +490,7 @@ export function resolveSkillRoots(
 ): string[] {
   const {
     cwd = process.cwd(),
-    agentDir = join(homedir(), CONFIG_DIR_NAME, "agent"),
+    agentDir = join(getSafeHomeDir(), CONFIG_DIR_NAME, "agent"),
     includeDefaults = true,
   } = options;
 
@@ -482,7 +500,9 @@ export function resolveSkillRoots(
   const projectSkillsDir = resolve(cwd, CONFIG_DIR_NAME, "skills");
   const packageSkillDirs = resolvePackageSkillPaths(agentDir);
 
-  return [...packageSkillDirs, userSkillsDir, projectSkillsDir];
+  return [...packageSkillDirs, userSkillsDir, projectSkillsDir].filter(
+    (dir): dir is string => typeof dir === "string" && dir.trim().length > 0,
+  );
 }
 
 type SkillRegistryInternal = {
@@ -602,7 +622,7 @@ export function createSkillRegistry() {
     await watcher.dispose();
     const {
       cwd = process.cwd(),
-      agentDir = join(homedir(), CONFIG_DIR_NAME, "agent"),
+      agentDir = join(getSafeHomeDir(), CONFIG_DIR_NAME, "agent"),
       includeDefaults = true,
     } = options;
 

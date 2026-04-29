@@ -48,8 +48,11 @@ export function createSkillWatcher(options: StartSkillWatcherOptions) {
   };
   const start = (paths: string[]) => {
     reset();
+    const roots = paths.filter(
+      (root): root is string => typeof root === "string" && root.trim().length > 0,
+    );
 
-    const globs = paths.flatMap((root) => [
+    const globs = roots.flatMap((root) => [
       join(root, "*.md"),
       join(root, "**/SKILL.md"),
     ]);
