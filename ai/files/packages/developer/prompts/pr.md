@@ -4,7 +4,6 @@
 
 ```md
 UserRequest: $ARGUMENTS
-ArtifactReference: $ARGUMENTS
 ```
 
 **Meta**
@@ -49,7 +48,7 @@ CURRENT_BRANCH=$(git branch --show-current)
 TARGET_BRANCH={DefaultBranch}
 ```
 
-**Parse artifact reference from ArtifactReference:**
+**Parse artifact reference from UserRequest:**
 
 - If GitHub issue: `#123`
 - If BasicMemory task: `5.1.1-task-database-schema`
