@@ -104,6 +104,9 @@ const FILE_NAME_PATTERN =
   /^(?<type>\w+)-(?<hashId>[a-z0-9]{8})-(?<title>.+)\.md$/;
 const FRONTMATTER_BLOCK_PATTERN =
   /^(?<open>---\s*\n)(?<yaml>[\s\S]*?)(?<close>\n---)(?<rest>[\s\S]*)$/;
+const ARTIFACT_REF_PATTERN =
+  /\b(?:epic|story|task|research|learning)-[a-z0-9]{8}-[a-z0-9][a-z0-9-]*\.md\b/g;
+const MARKDOWN_LINK_PATTERN = /\[[^\]]*\]\([^\)]*\)/g;
 
 function getBaseName(filePath: string): string {
   const normalized = filePath.replaceAll("\\", "/");
@@ -222,6 +225,103 @@ function extractFrontmatter(content: string): {
   const rest = match.groups.rest;
   const parsed = parseSimpleYaml(yaml);
   return { map: parsed, body: rest, hadFrontmatter: true };
+}
+
+function findMarkdownLinkRanges(text: string): Array<{ start: number; end: number }> {
+  const ranges: Array<{ start: number; end: number }> = [];
+  let match: RegExpExecArray | null;
+  MARKDOWN_LINK_PATTERN.lastIndex = 0;
+  while ((match = MARKDOWN_LINK_PATTERN.exec(text)) !== null) {
+    ranges.push({ start: match.index, end: match.index + match[0].length });
+  }
+  return ranges;
+}
+
+function isIndexInRanges(index: number, ranges: Array<{ start: number; end: number }>): boolean {
+  let i = 0;
+  while (i < ranges.length) {
+    const range = ranges[i];
+    if (index >= range.start && index < range.end) {
+      return true;
+    }
+    i += 1;
+  }
+  return false;
+}
+
+function validateBodyReferences(body: string): string[] {
+  const errors: string[] = [];
+  const seen = new Set<string>();
+  const ranges = findMarkdownLinkRanges(body);
+  let match: RegExpExecArray | null;
+  ARTIFACT_REF_PATTERN.lastIndex = 0;
+
+  while ((match = ARTIFACT_REF_PATTERN.exec(body)) !== null) {
+    if (isIndexInRanges(match.index, ranges)) {
+      continue;
+    }
+    const token = match[0];
+    if (seen.has(token)) {
+      continue;
+    }
+    seen.add(token);
+    errors.push(`Artifact reference must be a markdown link: ${token}`);
+  }
+
+  return errors;
+}
+
+function getDirectoryPath(filePath: string): string {
+  const normalized = filePath.replaceAll("\\", "/");
+  const slash = normalized.lastIndexOf("/");
+  if (slash <= 0) {
+    return ".";
+  }
+  return normalized.slice(0, slash);
+}
+
+async function repairBodyReferences(
+  body: string,
+  filePath: string,
+): Promise<{ body: string; changed: boolean }> {
+  const ranges = findMarkdownLinkRanges(body);
+  const matches: Array<{ token: string; start: number; end: number }> = [];
+
+  let match: RegExpExecArray | null;
+  ARTIFACT_REF_PATTERN.lastIndex = 0;
+  while ((match = ARTIFACT_REF_PATTERN.exec(body)) !== null) {
+    if (isIndexInRanges(match.index, ranges)) {
+      continue;
+    }
+    matches.push({
+      token: match[0],
+      start: match.index,
+      end: match.index + match[0].length,
+    });
+  }
+
+  if (matches.length === 0) {
+    return { body, changed: false };
+  }
+
+  const dir = getDirectoryPath(filePath);
+  let nextBody = body;
+  let changed = false;
+  let idx = matches.length - 1;
+
+  while (idx >= 0) {
+    const item = matches[idx];
+    const targetPath = `${dir}/${item.token}`;
+    if (await Bun.file(targetPath).exists()) {
+      const label = item.token.replace(/\.md$/, "");
+      const replacement = `[${label}](./${item.token})`;
+      nextBody = `${nextBody.slice(0, item.start)}${replacement}${nextBody.slice(item.end)}`;
+      changed = true;
+    }
+    idx -= 1;
+  }
+
+  return { body: nextBody, changed };
 }
 
 function toKebabWords(text: string): string {
@@ -558,6 +658,8 @@ async function validateOneFile(filePath: string): Promise<ValidationResult> {
     const frontmatterChecks = frontmatterValidation(filename, extraction.map);
     result.errors.push(...frontmatterChecks.errors);
     result.warnings.push(...frontmatterChecks.warnings);
+    const bodyReferenceErrors = validateBodyReferences(extraction.body);
+    result.errors.push(...bodyReferenceErrors);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     result.errors.push(`Failed to read file: ${message}`);
@@ -573,18 +675,9 @@ async function repairOneFile(filePath: string): Promise<{
   reason?: string;
 }> {
   const filename = getBaseName(filePath);
-
-  if (isSpecialFile(filename) || isFlexiblePrefixFile(filename)) {
-    return {
-      file: filePath,
-      changed: false,
-      skipped: true,
-      reason: "special-or-flexible-file",
-    };
-  }
-
+  const isSpecialOrFlexible = isSpecialFile(filename) || isFlexiblePrefixFile(filename);
   const meta = parseNameMeta(filename);
-  if (!meta || !FILE_TYPES[meta.type]) {
+  if (!isSpecialOrFlexible && (!meta || !FILE_TYPES[meta.type])) {
     return {
       file: filePath,
       changed: false,
@@ -592,28 +685,53 @@ async function repairOneFile(filePath: string): Promise<{
       reason: "unrecognized-filename-pattern",
     };
   }
-
   const content = await Bun.file(filePath).text();
   const extraction = extractFrontmatter(content);
-  const repairedResult = repairFrontmatter(filename, extraction.map);
+  let body = extraction.hadFrontmatter ? extraction.body : content;
 
-  if (!repairedResult.repaired) {
-    return {
-      file: filePath,
-      changed: false,
-      skipped: true,
-      reason: "unable-to-repair",
-    };
+  let frontmatterChanged = false;
+  let nextContent = content;
+
+  if (!isSpecialOrFlexible) {
+    const repairedResult = repairFrontmatter(filename, extraction.map);
+    if (!repairedResult.repaired) {
+      return {
+        file: filePath,
+        changed: false,
+        skipped: true,
+        reason: "unable-to-repair",
+      };
+    }
+
+    frontmatterChanged = repairedResult.changed;
+    const newFrontmatter = serializeFrontmatter(repairedResult.repaired);
+    body = extraction.hadFrontmatter ? extraction.body : content;
+    nextContent = `${newFrontmatter}${extraction.hadFrontmatter ? body : `\n${body}`}`;
   }
 
-  const newFrontmatter = serializeFrontmatter(repairedResult.repaired);
-  const body = extraction.hadFrontmatter ? extraction.body : `\n${content}`;
-  const nextContent = `${newFrontmatter}${body}`;
+  const bodyRepair = await repairBodyReferences(body, filePath);
 
-  if (!repairedResult.changed && content === nextContent) {
+  if (isSpecialOrFlexible) {
+    if (extraction.hadFrontmatter) {
+      const match = content.match(FRONTMATTER_BLOCK_PATTERN);
+      if (match && match.groups) {
+        nextContent = `${match.groups.open}${match.groups.yaml}${match.groups.close}${bodyRepair.body}`;
+      } else {
+        nextContent = bodyRepair.body;
+      }
+    } else {
+      nextContent = bodyRepair.body;
+    }
+  } else {
+    const updatedFrontmatter = nextContent.match(FRONTMATTER_BLOCK_PATTERN);
+    if (updatedFrontmatter && updatedFrontmatter.groups) {
+      nextContent = `${updatedFrontmatter.groups.open}${updatedFrontmatter.groups.yaml}${updatedFrontmatter.groups.close}${bodyRepair.body}`;
+    }
+  }
+
+  if (!frontmatterChanged && !bodyRepair.changed && content === nextContent) {
     return { file: filePath, changed: false, skipped: false };
   }
-
   await Bun.write(filePath, nextContent);
   return { file: filePath, changed: true, skipped: false };
 }
@@ -706,15 +824,15 @@ function printRepair(
 
 function usage(): void {
   console.log("Usage:");
-  console.log("  schema validate file <file> [...files]");
-  console.log("  schema repair file <file> [...files]");
+  console.log("  schema validate <file> [...files]");
+  console.log("  schema repair <file> [...files]");
   console.log("");
   console.log("Examples:");
   console.log(
-    "  bun run scripts/schema.ts validate file .memory/task-1234abcd-ship-it.md",
+    "  bun run scripts/schema.ts validate .memory/task-1234abcd-ship-it.md",
   );
   console.log(
-    "  bun run scripts/schema.ts repair file .memory/task-1234abcd-ship-it.md .memory/phase-deadbeef-plan.md",
+    "  bun run scripts/schema.ts repair .memory/task-1234abcd-ship-it.md .memory/phase-deadbeef-plan.md",
   );
 }
 
