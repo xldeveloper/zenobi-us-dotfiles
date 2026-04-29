@@ -26,10 +26,9 @@ _dotfiles_manifest_list() {
     -not -path '*/.git/*' \
     -not -path '*/node_modules/*' \
     -not -path '*/files/*' \
-    -not -path "$repo_root/ai/*" \
-    -not -path '*/.old_*/*' \
-    | sed -E "s#^${repo_root}/##; s#\.(yml|yaml)\$##; s#/#.#g" \
-    | sort -u
+    -not -path '*/.old_*/*' |
+    sed -E "s#^${repo_root}/##; s#\.(yml|yaml)\$##; s#/#.#g" |
+    sort -u
 }
 
 _dotfiles_normalize_manifests() {
@@ -54,12 +53,12 @@ dotfiles() {
     return 1
   fi
 
-  if (( $# == 0 )); then
+  if (($# == 0)); then
     # Interactive fzf selection; empty selection means "apply all"
     selected=$(_dotfiles_manifest_list | fzf --multi --preview-window=hidden \
       --header="Select manifests (TAB=multi, ENTER=confirm, ESC=all)" \
-      --bind="esc:abort" \
-      | tr '\n' ',' | sed 's/,$//')
+      --bind="esc:abort" |
+      tr '\n' ',' | sed 's/,$//')
 
     if [[ -z "$selected" ]]; then
       echo "dotfiles: applying all manifests..."
@@ -87,12 +86,12 @@ _dotfiles_completion() {
   _describe -t comtrya-manifests 'comtrya manifest' manifests
 }
 
-if (( ${+functions[compdef]} )); then
+if ((${+functions[compdef]})); then
   compdef _dotfiles_completion dotfiles
-elif (( ${+_comps} )); then
+elif ((${+_comps})); then
   _comps[dotfiles]=_dotfiles_completion
-elif (( ${+functions[zicompdef]} )); then
+elif ((${+functions[zicompdef]})); then
   zicompdef _dotfiles_completion dotfiles
-elif (( ${+functions[zpcompdef]} )); then
+elif ((${+functions[zpcompdef]})); then
   zpcompdef _dotfiles_completion dotfiles
 fi
