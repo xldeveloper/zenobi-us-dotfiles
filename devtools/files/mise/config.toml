@@ -86,6 +86,7 @@ tombi = "latest"
 "go:golang.org/x/tools/gopls" = "0.20.0"
 "npm:@openai/codex" = "latest"
 "pipx:vectorcode" = "latest"
+"github:d-kuro/gwq" = "latest"
 
 [tools."github:aristocratos/btop"]
 version = "1.4.5"
