@@ -1,5 +1,5 @@
 ---
-name: moonrepo/run-tasks
+name: run-tasks
 description: Runs moonrepo tasks with project/target selectors and troubleshooting flow, when daily execution needs predictable scoped runs, resulting in faster feedback and fewer ad hoc command mistakes.
 ---
 

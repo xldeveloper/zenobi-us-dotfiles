@@ -1,5 +1,5 @@
 ---
-name: comfyui-skill-public
+name: comfyui
 description: Portable ComfyUI workflow and API guidance for any install. Use when building, validating, or troubleshooting ComfyUI image/video workflows, discovering available nodes/models via /object_info, wiring loaders/encoders/VAEs/LoRAs correctly, submitting jobs through the REST or WebSocket APIs, training LoRAs with ComfyUI, adapting a workflow to an unknown user machine without assuming specific checkpoints, paths, hardware, or custom nodes.
 ---
 

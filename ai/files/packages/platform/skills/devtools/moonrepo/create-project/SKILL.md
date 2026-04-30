@@ -1,5 +1,5 @@
 ---
-name: moonrepo/create-project
+name: create-project
 description: Creates new moonrepo projects with placement, task wiring, and validation steps, when onboarding packages/apps into an existing moon workspace, resulting in consistent project setup and fewer integration regressions.
 ---
 

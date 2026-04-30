@@ -1,5 +1,5 @@
 ---
-name: moonrepo/adding-new-tasks
+name: adding-new-tasks
 description: Adds or refactors moonrepo project tasks in moon.yml, when teams need canonical task definitions and reproducible execution, resulting in clearer task ownership, better caching, and less script drift.
 ---
 

@@ -1,5 +1,5 @@
 ---
-name: moonrepo/with-bun
+name: with-bun
 description: Configures moonrepo to use Bun for JavaScript and TypeScript projects, when setting up or standardizing Bun-based toolchains and tasks, resulting in deterministic runtime versions, correct toolchain resolution, and fewer task/runtime mismatches.
 ---
 

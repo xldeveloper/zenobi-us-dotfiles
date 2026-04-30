@@ -1,5 +1,5 @@
 ---
-name: moonrepo/project-generators
+name: project-generators
 description: Creates and operates moonrepo project generators through template authoring, discovery, and safe generation flows, when scaffolding repeatable apps/packages/config in a workspace, resulting in standardized code generation with predictable destinations and variables.
 ---
 

@@ -1,5 +1,5 @@
 ---
-name: moonrepo/optimise-tasks
+name: optimise-tasks
 description: Optimizes moonrepo task performance with measurement-first checks and cache/graph tactics, when local or CI runs are slow or inconsistent, resulting in targeted improvements without premature tuning.
 ---
 
